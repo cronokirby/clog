@@ -55,6 +55,20 @@
 
     defaultPackage = self.packages;
     defaultApp = self.apps;
+
+    devShells = forAllSystems (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in {
+        default = pkgs.mkShell {
+          name = "ck-clog-dev";
+
+          buildInputs = [
+            # C Compiler
+            pkgs.gcc 
+          ];
+        };
+      });
   };
 }
 
