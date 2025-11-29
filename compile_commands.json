@@ -1,0 +1,7 @@
+[
+  {
+    "directory": ".",
+    "file": "src/main.c",
+    "command": "clang -std=c23 src/main.c"
+  }
+]

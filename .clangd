@@ -1,0 +1,49 @@
+CompileFlags:
+  # Let clangd see your real warnings from compile_commands.json
+  # and also apply these extra default flags:
+  Add: [
+    "-std=c23",
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Wshadow",
+    "-Wconversion",
+    "-Wuninitialized",
+    "-Wundef",
+    "-Werror=implicit-function-declaration"
+  ]
+
+Diagnostics:
+  # Enable ALL clang compiler diagnostics (this is the big one)
+  ClangTidy:
+    Add:
+      - clang-diagnostic-*      # enables clang's own warnings
+      - clang-analyzer-*        # enables static analyzer checks
+      - bugprone-assign-if-reversed
+      - bugprone-signal-handler
+      - bugprone-suspicious-memory-comparison
+      - readability-misleading-indentation
+
+    Remove:
+      # Remove C++-only checks that annoy C programmers.
+      - modernize-*
+      - cppcoreguidelines-*
+      - readability-identifier-naming
+      - readability-magic-numbers
+      - llvm-*
+      - hicpp-*
+      - google-*
+      - performance-*
+      - portability-*
+      - misc-non-private-member-variables-in-classes
+
+  # Make warnings more like the real clang compiler
+  MissingIncludes: true
+  UnusedIncludes: true
+
+# Use the default formatter
+Formatting:
+  Style: file
+
+InlayHints:
+  Enabled: true

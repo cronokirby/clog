@@ -29,11 +29,10 @@
           version = "0.1";
 
           # Leave your directory structure:
-          # src/main.c  (and whatever else you may add)
-          src = ./src;
+          src = ./.;
 
           buildPhase = ''
-            $CC main.c -o ck-clog
+            $CC src/main.c -o ck-clog
           '';
 
           installPhase = ''
@@ -66,6 +65,8 @@
           buildInputs = [
             # C Compiler
             pkgs.gcc 
+            # C LSP and other tools
+            pkgs.clang-tools
           ];
         };
       });
