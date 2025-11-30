@@ -32,12 +32,12 @@
           src = ./.;
 
           buildPhase = ''
-            $CC src/main.c -o ck-clog
+            make release
           '';
 
           installPhase = ''
             mkdir -p $out/bin
-            cp ck-clog $out/bin/
+            cp target/release $out/bin/ck-clog
           '';
         };
 
