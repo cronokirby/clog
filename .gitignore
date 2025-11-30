@@ -2,3 +2,8 @@
 .jj/
 .git/
 target/
+
+
+# Added by cargo
+
+/target
