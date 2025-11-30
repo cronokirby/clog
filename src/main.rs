@@ -1,19 +1,29 @@
 use anyhow::anyhow;
-use std::path::PathBuf;
+use markdown::to_html;
+use std::{
+    fs::{self},
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 /// A static string for usage errors.
 const USAGE: &str = "usage: clog <input_dir> <output_dir>";
 
+// 1 MiB for input and output file buffers.
+
+/// The starting capacity of the input buffer.
+const INPUT_CAPACITY: usize = 1 << 20;
+
 /// Arguments to the program.
 #[derive(Debug)]
-struct Program {
+struct Args {
     /// The input directory for the blog's files.
-    input_dir: PathBuf,
+    pub input_dir: PathBuf,
     /// Where the site should be generated.
-    output_dir: PathBuf,
+    pub output_dir: PathBuf,
 }
 
-impl Program {
+impl Args {
     fn parse() -> anyhow::Result<Self> {
         let mut args = std::env::args().skip(1);
         Ok(Self {
@@ -21,16 +31,57 @@ impl Program {
             output_dir: args.next().ok_or_else(|| anyhow!(USAGE))?.into(),
         })
     }
+}
 
-    fn run(self) -> anyhow::Result<()> {
-        println!("input_dir: {:?}", self.input_dir);
-        println!("output_dir: {:?}", self.output_dir);
+struct Processor {
+    input_dir: PathBuf,
+    content_dir: PathBuf,
+    output_dir: PathBuf,
+    input_buf: String,
+}
+
+impl Processor {
+    fn new(args: Args) -> Self {
+        Self {
+            content_dir: args.input_dir.join("content"),
+            input_dir: args.input_dir,
+            output_dir: args.output_dir,
+            input_buf: String::with_capacity(INPUT_CAPACITY),
+        }
+    }
+
+    fn run(mut self) -> anyhow::Result<()> {
+        let content_path = self.input_dir.join("content");
+        for entry in fs::read_dir(content_path)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if file_type.is_file() {
+                self.process_file(&entry.path())?;
+            }
+        }
+        Ok(())
+    }
+
+    fn process_file(&mut self, path: &Path) -> anyhow::Result<()> {
+        // Skip non-markdown files.
+        if !path.extension().map(|x| x == "md").unwrap_or(true) {
+            return Ok(());
+        }
+        let output_path = self
+            .output_dir
+            .join(path.strip_prefix(&self.content_dir)?.with_extension("html"));
+        println!("{:?}", &output_path);
+        let mut file = fs::File::open(path)?;
+        self.input_buf.clear();
+        file.read_to_string(&mut self.input_buf)?;
+        let html = to_html(&self.input_buf);
+        fs::write(output_path, html)?;
         Ok(())
     }
 }
 
 fn main() -> anyhow::Result<()> {
-    let prog = Program::parse()?;
-    prog.run()?;
-    Ok(())
+    let args = Args::parse()?;
+    let processor = Processor::new(args);
+    processor.run()
 }
