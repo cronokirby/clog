@@ -1,10 +1,13 @@
 use anyhow::anyhow;
 use markdown::to_html;
 use std::{
-    fs::{self},
+    fs,
     io::Read,
     path::{Path, PathBuf},
 };
+
+mod fs_utils;
+use fs_utils::copy_dir;
 
 /// A static string for usage errors.
 const USAGE: &str = "usage: clog <input_dir> <output_dir>";
@@ -35,6 +38,7 @@ impl Args {
 
 struct Processor {
     content_dir: PathBuf,
+    static_dir: PathBuf,
     output_dir: PathBuf,
     input_buf: String,
 }
@@ -43,12 +47,16 @@ impl Processor {
     fn new(args: Args) -> Self {
         Self {
             content_dir: args.input_dir.join("content"),
+            static_dir: args.input_dir.join("static"),
             output_dir: args.output_dir,
             input_buf: String::with_capacity(INPUT_CAPACITY),
         }
     }
 
     fn run(mut self) -> anyhow::Result<()> {
+        if self.static_dir.is_dir() {
+            copy_dir(&self.static_dir, &self.output_dir.join("static"))?;
+        }
         for entry in fs::read_dir(&self.content_dir)? {
             let entry = entry?;
             let file_type = entry.file_type()?;
