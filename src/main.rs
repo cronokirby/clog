@@ -34,7 +34,6 @@ impl Args {
 }
 
 struct Processor {
-    input_dir: PathBuf,
     content_dir: PathBuf,
     output_dir: PathBuf,
     input_buf: String,
@@ -44,15 +43,13 @@ impl Processor {
     fn new(args: Args) -> Self {
         Self {
             content_dir: args.input_dir.join("content"),
-            input_dir: args.input_dir,
             output_dir: args.output_dir,
             input_buf: String::with_capacity(INPUT_CAPACITY),
         }
     }
 
     fn run(mut self) -> anyhow::Result<()> {
-        let content_path = self.input_dir.join("content");
-        for entry in fs::read_dir(content_path)? {
+        for entry in fs::read_dir(&self.content_dir)? {
             let entry = entry?;
             let file_type = entry.file_type()?;
             if file_type.is_file() {
@@ -70,7 +67,6 @@ impl Processor {
         let output_path = self
             .output_dir
             .join(path.strip_prefix(&self.content_dir)?.with_extension("html"));
-        println!("{:?}", &output_path);
         let mut file = fs::File::open(path)?;
         self.input_buf.clear();
         file.read_to_string(&mut self.input_buf)?;
