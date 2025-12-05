@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 markdown = "1.0.0"
+minijinja = { version = "2.13.0", features = [] }
 
 # Build all dependencies in release mode, even for dev builds.
 # This should make debug builds faster.
