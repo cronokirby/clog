@@ -2,6 +2,7 @@ use anyhow::{Context, anyhow};
 use markdown::to_html;
 use minijinja::{Environment, Template, context};
 use std::{
+    borrow::Cow,
     fs::{self},
     io::{BufWriter, Write},
     path::{Path, PathBuf},
@@ -27,7 +28,9 @@ impl<'a> File<'a> {
 
     pub fn write(self, out_dir: &Path, template: Template<'_, '_>) -> anyhow::Result<()> {
         let body = to_html(&self.contents);
-        let file = fs::File::create(&out_dir.join(self.rel_path.with_extension("html")))?;
+        let out_path = out_dir.join(self.rel_path.with_extension("html"));
+        fs::create_dir_all(out_path.parent().ok_or_else(|| anyhow!("missing parent"))?)?;
+        let file = fs::File::create(&out_path)?;
         let mut writer = BufWriter::new(file);
         let ctx = context! {
           body => body
@@ -81,20 +84,27 @@ impl Processor {
         let env = Environment::new();
         let template_data = fs::read_to_string(self.template_dir.join("index.html"))?;
         let template = env.template_from_str(&template_data)?;
-        for entry in fs::read_dir(&self.content_dir)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if !file_type.is_file() {
-                continue;
+        let mut dirs = vec![Cow::Borrowed(&self.content_dir)];
+        while let Some(dir) = dirs.pop() {
+            for entry in fs::read_dir(dir.as_path())? {
+                let entry = entry?;
+                let file_type = entry.file_type()?;
+                if !file_type.is_file() {
+                    if file_type.is_dir() {
+                        dirs.push(Cow::Owned(entry.path()));
+                    }
+                    continue;
+                }
+                let path = entry.path();
+                // Skip non-markdown files.
+                if !path.extension().map(|x| x == "md").unwrap_or(true) {
+                    continue;
+                }
+                File::read(&self.content_dir, &path)
+                    .with_context(|| format!("failed to read file: {:?}", &path))?
+                    .write(&self.output_dir, template.clone())
+                    .with_context(|| format!("failed to write file: {:?}", &path))?;
             }
-            let path = entry.path();
-            // Skip non-markdown files.
-            if !path.extension().map(|x| x == "md").unwrap_or(true) {
-                return Ok(());
-            }
-            File::read(&self.content_dir, &path)
-                .with_context(|| format!("failed to process file: {:?}", &path))?
-                .write(&self.output_dir, template.clone())?;
         }
         Ok(())
     }
