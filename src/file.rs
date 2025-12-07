@@ -110,12 +110,12 @@ fn write_md_ast<'root>(writer: &mut impl io::Write, ast: &'root mdast::Node) -> 
                 fmt!("<code>{}</code>", &n.value);
             }
             Delete(n) => {
-                lit!("<del/>");
+                lit!("</del>");
                 children!(n.children);
                 lit!("<del>");
             }
             Emphasis(n) => {
-                lit!("<em/>");
+                lit!("</em>");
                 children!(n.children);
                 lit!("<em>");
             }
