@@ -121,7 +121,11 @@ fn write_md_ast<'root>(writer: &mut impl io::Write, ast: &'root mdast::Node) -> 
             }
             FootnoteReference(n) => {
                 let id = footnote_ids.value(&n.identifier);
-                fmt!("<sup><a href=\"#fn-{}\">{}</a></sup>", &n.identifier, id);
+                fmt!(
+                    "<sup><a href=\"#fn-{}\">{}</a></sup>",
+                    &n.identifier,
+                    id + 1
+                );
             }
             Html(n) => {
                 fmt!("{}", n.value);
@@ -197,7 +201,7 @@ fn write_md_ast<'root>(writer: &mut impl io::Write, ast: &'root mdast::Node) -> 
                 write!(writer, "<li>???</li>\n")?;
             }
             Some((identifier, children)) => {
-                write!(writer, "<li id=\"id-{identifier}\">")?;
+                write!(writer, "<li id=\"fn-{identifier}\">")?;
                 for n in children {
                     write_md_ast(writer, n)?;
                 }
