@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use markdown::ParseOptions;
 use markdown::mdast;
 use markdown::to_mdast;
 use minijinja::{Template, context};
@@ -239,8 +240,13 @@ impl<'a> File<'a> {
     /// - `out_dir` should be the root of the final site.
     /// - `template` will be used to render the markdown.
     pub fn write(self, out_dir: &Path, template: Template<'_, '_>) -> anyhow::Result<()> {
+        let options = {
+            let mut out = ParseOptions::gfm();
+            out.constructs.frontmatter = true;
+            out
+        };
         let body = {
-            let ast = to_mdast(&self.contents, &markdown::ParseOptions::gfm())
+            let ast = to_mdast(&self.contents, &options)
                 .map_err(|e| anyhow!("failed to parse markdown: {e}"))?;
             let mut buffer = Vec::with_capacity(1 << 14);
             write_md_ast(&mut buffer, &ast)?;
