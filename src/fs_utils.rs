@@ -13,6 +13,12 @@ pub fn copy_dir(in_dir: &Path, out_dir: &Path) -> anyhow::Result<()> {
             out_path.push(entry.file_name());
             fs::copy(entry.path(), &out_path)?;
             out_path.pop();
+            continue;
+        }
+        if file_type.is_dir() {
+            out_path.push(entry.file_name());
+            copy_dir(&entry.path(), &out_path)?;
+            out_path.pop();
         }
     }
     Ok(())
