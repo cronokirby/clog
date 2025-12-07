@@ -1,45 +1,19 @@
 use anyhow::{Context, anyhow};
-use markdown::to_html;
-use minijinja::{Environment, Template, context};
+use minijinja::Environment;
 use std::{
     borrow::Cow,
     fs::{self},
-    io::{BufWriter, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
+
+mod file;
+use file::File;
 
 mod fs_utils;
 use fs_utils::copy_dir;
 
 /// A static string for usage errors.
 const USAGE: &str = "usage: clog <input_dir> <output_dir>";
-
-struct File<'a> {
-    rel_path: &'a Path,
-    contents: String,
-}
-
-impl<'a> File<'a> {
-    pub fn read(base: &'a Path, full: &'a Path) -> anyhow::Result<Self> {
-        let rel_path = full.strip_prefix(base)?;
-        let contents = fs::read_to_string(full)?;
-        Ok(Self { rel_path, contents })
-    }
-
-    pub fn write(self, out_dir: &Path, template: Template<'_, '_>) -> anyhow::Result<()> {
-        let body = to_html(&self.contents);
-        let out_path = out_dir.join(self.rel_path.with_extension("html"));
-        fs::create_dir_all(out_path.parent().ok_or_else(|| anyhow!("missing parent"))?)?;
-        let file = fs::File::create(&out_path)?;
-        let mut writer = BufWriter::new(file);
-        let ctx = context! {
-          body => body
-        };
-        template.render_to_write(ctx, &mut writer)?;
-        writer.flush()?;
-        Ok(())
-    }
-}
 
 /// Arguments to the program.
 #[derive(Debug)]
