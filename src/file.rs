@@ -150,7 +150,7 @@ fn write_md_ast<'root>(writer: &mut impl io::Write, ast: &'root mdast::Node) -> 
                 fmt!("<a href={}>", n.url);
             }
             Code(n) => {
-                fmt!("\n<pre>\n<code>\n{}\n</code>\n</pre>", n.value);
+                fmt!("\n<pre><code>{}</code></pre>", n.value);
             }
             InlineMath(n) => {
                 fmt!("<code>${}$</code>", n.value);
