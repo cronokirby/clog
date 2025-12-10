@@ -1,18 +1,20 @@
-use anyhow::{Context, anyhow};
-use minijinja::Environment;
+use anyhow::anyhow;
+use minijinja::{Environment, context};
 use std::{
-    borrow::Cow,
     fs::{self},
+    io::{BufWriter, Write},
     path::PathBuf,
 };
 
 mod frontmatter;
-
-mod file;
-use file::File;
-
 mod fs_utils;
+mod markdown;
+mod sitemap;
+
 use fs_utils::copy_dir;
+use sitemap::SiteMap;
+
+use crate::markdown::{make_mdast, write_md_ast};
 
 /// A static string for usage errors.
 const USAGE: &str = "usage: clog <input_dir> <output_dir>";
@@ -60,41 +62,38 @@ impl Processor {
         let env = Environment::new();
         let template_data = fs::read_to_string(self.template_dir.join("index.html"))?;
         let template = env.template_from_str(&template_data)?;
-        let mut dirs = vec![Cow::Borrowed(&self.content_dir)];
-        while let Some(dir) = dirs.pop() {
-            for entry in fs::read_dir(dir.as_path())? {
-                let entry = entry?;
-                let file_type = entry.file_type()?;
-                if !file_type.is_file() {
-                    if file_type.is_dir() {
-                        dirs.push(Cow::Owned(entry.path()));
-                    }
-                    continue;
-                }
-                let path = entry.path();
-                let Some(extension) = path.extension() else {
-                    continue;
-                };
-                // Copy any images "in place".
-                // Contains won't work because of the need to cast.
-                if ["png", "jpg"].into_iter().any(|x| x == extension) {
-                    let rel_path = path.strip_prefix(&self.content_dir)?;
-                    let out_path = self.output_dir.join(rel_path);
-                    if let Some(parent) = out_path.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    fs::copy(&path, &self.output_dir.join(rel_path))?;
-                    continue;
-                }
-                // Skip non-markdown files.
-                if !path.extension().map(|x| x == "md").unwrap_or(true) {
-                    continue;
-                }
-                File::read(&self.content_dir, &path)
-                    .with_context(|| format!("failed to read file: {:?}", &path))?
-                    .write(&self.output_dir, template.clone())
-                    .with_context(|| format!("failed to write file: {:?}", &path))?;
+        let site_map = SiteMap::build(&self.content_dir, &self.output_dir)?;
+        for file in site_map.statics() {
+            if let Some(parent) = file.out_path.parent() {
+                fs::create_dir_all(parent)?;
             }
+            fs::copy(&file.in_path, &file.out_path)?;
+        }
+        let mut buf = Vec::with_capacity(1 << 14);
+        for page in site_map.pages() {
+            let content = fs::read_to_string(&page.in_path)?;
+            let md = make_mdast(&content)?;
+            let body = {
+                buf.clear();
+                write_md_ast(&mut buf, &md)?;
+                String::from_utf8_lossy(&buf)
+            };
+            if let Some(parent) = page.out_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let file = fs::File::create(&page.out_path)?;
+            let mut writer = BufWriter::new(file);
+            let ctx = context! {
+              body => body,
+              title => page.front_matter.title,
+              date => page.front_matter.date,
+              authors => page.front_matter.authors,
+              published => page.front_matter.published,
+              link => page.front_matter.link,
+              tags => page.front_matter.tags,
+            };
+            template.render_to_write(ctx, &mut writer)?;
+            writer.flush()?;
         }
         Ok(())
     }
