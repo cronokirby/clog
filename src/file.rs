@@ -12,6 +12,16 @@ use std::path::Path;
 mod counter;
 use counter::Sequential;
 
+fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
+    let options = {
+        let mut out = ParseOptions::gfm();
+        out.constructs.frontmatter = true;
+        out
+    };
+    let ast = to_mdast(data, &options).map_err(|e| anyhow!("failed to parse markdown: {e}"))?;
+    Ok(ast)
+}
+
 fn write_md_ast<'root>(writer: &mut impl io::Write, ast: &'root mdast::Node) -> anyhow::Result<()> {
     enum Work<'a> {
         Node(&'a mdast::Node),
@@ -218,7 +228,7 @@ fn write_md_ast<'root>(writer: &mut impl io::Write, ast: &'root mdast::Node) -> 
 /// Represents a file we process in our blog engine.
 pub struct File<'a> {
     rel_path: &'a Path,
-    contents: String,
+    ast: mdast::Node,
 }
 
 impl<'a> File<'a> {
@@ -232,7 +242,8 @@ impl<'a> File<'a> {
     pub fn read(base: &Path, full: &'a Path) -> anyhow::Result<Self> {
         let rel_path = full.strip_prefix(base)?;
         let contents = fs::read_to_string(full)?;
-        Ok(Self { rel_path, contents })
+        let ast = make_mdast(&contents)?;
+        Ok(Self { rel_path, ast })
     }
 
     /// Process this file, creating an HTML file in the output path.
@@ -240,22 +251,15 @@ impl<'a> File<'a> {
     /// - `out_dir` should be the root of the final site.
     /// - `template` will be used to render the markdown.
     pub fn write(self, out_dir: &Path, template: Template<'_, '_>) -> anyhow::Result<()> {
-        let options = {
-            let mut out = ParseOptions::gfm();
-            out.constructs.frontmatter = true;
-            out
-        };
-        let body = {
-            let ast = to_mdast(&self.contents, &options)
-                .map_err(|e| anyhow!("failed to parse markdown: {e}"))?;
-            let mut buffer = Vec::with_capacity(1 << 14);
-            write_md_ast(&mut buffer, &ast)?;
-            String::from_utf8(buffer)?
-        };
         let out_path = out_dir.join(self.rel_path.with_extension("html"));
         fs::create_dir_all(out_path.parent().ok_or_else(|| anyhow!("missing parent"))?)?;
         let file = fs::File::create(&out_path)?;
         let mut writer = BufWriter::new(file);
+        let body = {
+            let mut buffer = Vec::with_capacity(1 << 14);
+            write_md_ast(&mut buffer, &self.ast)?;
+            String::from_utf8(buffer)?
+        };
         let ctx = context! {
           body => body
         };
