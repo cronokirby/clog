@@ -7,6 +7,10 @@ edition = "2024"
 anyhow = "1.0.100"
 markdown = "1.0.0"
 minijinja = { version = "2.13.0", features = [] }
+regex = "1.12.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_yaml = "0.9.34"
+time = { version = "0.3.44", features = ["formatting"] }
 
 # Build all dependencies in release mode, even for dev builds.
 # This should make debug builds faster.

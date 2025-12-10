@@ -12,6 +12,8 @@ use std::path::Path;
 mod counter;
 use counter::Sequential;
 
+use crate::frontmatter::FrontMatter;
+
 fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
     let options = {
         let mut out = ParseOptions::gfm();
@@ -225,9 +227,25 @@ fn write_md_ast<'root>(writer: &mut impl io::Write, ast: &'root mdast::Node) -> 
     Ok(())
 }
 
+pub fn find_yaml_frontmatter<'root>(ast: &'root mdast::Node) -> Option<&'root str> {
+    let mut q = vec![ast];
+    while let Some(n) = q.pop() {
+        use mdast::Node::*;
+        match n {
+            Root(n) => {
+                q.extend(n.children.iter());
+            }
+            Yaml(n) => return Some(&n.value),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Represents a file we process in our blog engine.
 pub struct File<'a> {
     rel_path: &'a Path,
+    frontmatter: FrontMatter,
     ast: mdast::Node,
 }
 
@@ -243,7 +261,15 @@ impl<'a> File<'a> {
         let rel_path = full.strip_prefix(base)?;
         let contents = fs::read_to_string(full)?;
         let ast = make_mdast(&contents)?;
-        Ok(Self { rel_path, ast })
+        let frontmatter = {
+            let yaml = find_yaml_frontmatter(&ast);
+            FrontMatter::try_from_yaml(full, yaml)?
+        };
+        Ok(Self {
+            rel_path,
+            frontmatter,
+            ast,
+        })
     }
 
     /// Process this file, creating an HTML file in the output path.
@@ -251,6 +277,9 @@ impl<'a> File<'a> {
     /// - `out_dir` should be the root of the final site.
     /// - `template` will be used to render the markdown.
     pub fn write(self, out_dir: &Path, template: Template<'_, '_>) -> anyhow::Result<()> {
+        if self.frontmatter.draft {
+            return Ok(());
+        }
         let out_path = out_dir.join(self.rel_path.with_extension("html"));
         fs::create_dir_all(out_path.parent().ok_or_else(|| anyhow!("missing parent"))?)?;
         let file = fs::File::create(&out_path)?;
@@ -261,7 +290,13 @@ impl<'a> File<'a> {
             String::from_utf8(buffer)?
         };
         let ctx = context! {
-          body => body
+          body => body,
+          title => self.frontmatter.title,
+          date => self.frontmatter.date,
+          authors => self.frontmatter.authors,
+          published => self.frontmatter.published,
+          link => self.frontmatter.link,
+          tags => self.frontmatter.tags,
         };
         template.render_to_write(ctx, &mut writer)?;
         writer.flush()?;

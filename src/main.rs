@@ -6,6 +6,8 @@ use std::{
     path::PathBuf,
 };
 
+mod frontmatter;
+
 mod file;
 use file::File;
 
