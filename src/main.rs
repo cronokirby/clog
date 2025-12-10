@@ -70,6 +70,20 @@ impl Processor {
                     continue;
                 }
                 let path = entry.path();
+                let Some(extension) = path.extension() else {
+                    continue;
+                };
+                // Copy any images "in place".
+                // Contains won't work because of the need to cast.
+                if ["png", "jpg"].into_iter().any(|x| x == extension) {
+                    let rel_path = path.strip_prefix(&self.content_dir)?;
+                    let out_path = self.output_dir.join(rel_path);
+                    if let Some(parent) = out_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::copy(&path, &self.output_dir.join(rel_path))?;
+                    continue;
+                }
                 // Skip non-markdown files.
                 if !path.extension().map(|x| x == "md").unwrap_or(true) {
                     continue;
