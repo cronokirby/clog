@@ -143,6 +143,8 @@ impl FrontMatter {
             Some(y) => serde_yaml::from_str(y)?,
             None => Default::default(),
         };
+        let mut tags = raw.tags();
+        tags.sort();
         Ok(Self {
             title: raw.title(path)?,
             draft: raw.draft(),
@@ -150,7 +152,7 @@ impl FrontMatter {
             authors: raw.authors(),
             published: raw.published(),
             link: raw.link(),
-            tags: raw.tags(),
+            tags,
         })
     }
 }
