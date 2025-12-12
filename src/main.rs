@@ -78,16 +78,62 @@ impl Processor {
 
     fn run(self) -> anyhow::Result<()> {
         let config = self.config()?;
+
         let env = Environment::new();
-        let template_data = fs::read_to_string(self.template_dir.join("index.html"))?;
-        let template = env.template_from_str(&template_data)?;
+
+        let content_template_data = fs::read_to_string(self.template_dir.join("index.html"))?;
+        let list_template_data = {
+            let path = self.template_dir.join("list.html");
+            if fs::exists(&path)? {
+                Some(fs::read_to_string(&path)?)
+            } else {
+                None
+            }
+        };
+        let content_template = env.template_from_str(&content_template_data)?;
+        let list_template = list_template_data
+            .as_ref()
+            .map(|x| env.template_from_str(x))
+            .transpose()?;
+
         let site_map = SiteMap::build(&config, &self.content_dir, &self.output_dir)?;
+
         for file in site_map.statics() {
             if let Some(parent) = file.out_path.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::copy(&file.in_path, &file.out_path)?;
         }
+        if let Some(list_template) = list_template {
+            for (folder, pages) in site_map.folders() {
+                let items = pages
+                    .filter_map(|page| {
+                        if page.front_matter.draft {
+                            return None;
+                        }
+                        Some(context! {
+                            title => page.front_matter.title,
+                            date => page.front_matter.date,
+                            link => page.link,
+                            tags => page.front_matter.tags
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let out_path = self.output_dir.join(folder).join("index.html");
+                if let Some(parent) = out_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let file = fs::File::create(&out_path)?;
+                let mut writer = BufWriter::new(file);
+                let ctx = context! {
+                  title => folder.to_string_lossy(),
+                  items => items
+                };
+                list_template.render_to_write(ctx, &mut writer)?;
+                writer.flush()?;
+            }
+        }
+
         let mut buf = Vec::with_capacity(1 << 14);
         for page in site_map.pages() {
             let content = fs::read_to_string(&page.in_path)?;
@@ -111,9 +157,12 @@ impl Processor {
               link => page.front_matter.link,
               tags => page.front_matter.tags,
             };
-            template.render_to_write(ctx, &mut writer)?;
+            content_template.render_to_write(ctx, &mut writer)?;
             writer.flush()?;
         }
+
+        self.copy_static_files()?;
+
         Ok(())
     }
 }

@@ -139,7 +139,7 @@ impl SiteMap {
                 });
             }
         }
-        let pages_by_name = {
+        let mut pages_by_name = {
             let mut out = HashMap::<_, Vec<_>>::new();
             for (i, page) in pages.iter().enumerate() {
                 out.entry(page.name.clone()).or_default().push(i);
@@ -155,7 +155,7 @@ impl SiteMap {
                 }
             }
         }
-        let folders = {
+        let mut folders = {
             let mut out = HashMap::<_, Vec<_>>::new();
             for (i, page) in pages.iter().enumerate() {
                 if let Some(folder) = page.folder(in_path)? {
@@ -164,6 +164,13 @@ impl SiteMap {
             }
             out
         };
+        // Sort grouped pages.
+        for list in pages_by_name.values_mut() {
+            sort_page_indices(&pages, list);
+        }
+        for list in folders.values_mut() {
+            sort_page_indices(&pages, list);
+        }
         Ok(Self {
             statics,
             pages,
@@ -180,5 +187,14 @@ impl SiteMap {
     /// Iterate over all of the pages.
     pub fn pages(&self) -> impl Iterator<Item = &Page> {
         self.pages.iter()
+    }
+
+    /// Iterate over all of the folders
+    pub fn folders<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (&'a Path, impl Iterator<Item = &'a Page>)> {
+        self.folders
+            .iter()
+            .map(|(path, indices)| (path.as_path(), indices.iter().map(|&i| &self.pages[i])))
     }
 }

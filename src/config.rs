@@ -17,10 +17,6 @@ pub struct Config {
     /// ignored_folders: ["Ignored/A"]
     /// ```
     pub ignored_folders: HashSet<PathBuf>,
-    /// Folders to generate list pages for.
-    ///
-    /// The template for this should be `list.html`.
-    pub list_folders: HashSet<PathBuf>,
 }
 
 impl Config {
