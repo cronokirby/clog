@@ -42,7 +42,7 @@ pub struct Static {
 }
 
 /// A page with actual markdown content.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Page {
     pub name: String,
     pub link: String,
@@ -76,6 +76,7 @@ pub struct SiteMap {
     statics: Vec<Static>,
     pages: Vec<Page>,
     pages_by_name: HashMap<String, Vec<usize>>,
+    pages_by_tag: HashMap<String, Vec<usize>>,
     folders: HashMap<PathBuf, Vec<usize>>,
 }
 
@@ -146,6 +147,15 @@ impl SiteMap {
             }
             out
         };
+        let mut pages_by_tag = {
+            let mut out = HashMap::<_, Vec<_>>::new();
+            for (i, page) in pages.iter().enumerate() {
+                for tag in &page.front_matter.tags {
+                    out.entry(tag.clone()).or_default().push(i);
+                }
+            }
+            out
+        };
         // Generate warnings for duplicate names
         for (name, indices) in &pages_by_name {
             if indices.len() > 1 {
@@ -168,6 +178,9 @@ impl SiteMap {
         for list in pages_by_name.values_mut() {
             sort_page_indices(&pages, list);
         }
+        for list in pages_by_tag.values_mut() {
+            sort_page_indices(&pages, list);
+        }
         for list in folders.values_mut() {
             sort_page_indices(&pages, list);
         }
@@ -175,6 +188,7 @@ impl SiteMap {
             statics,
             pages,
             pages_by_name,
+            pages_by_tag,
             folders,
         })
     }
@@ -196,5 +210,14 @@ impl SiteMap {
         self.folders
             .iter()
             .map(|(path, indices)| (path.as_path(), indices.iter().map(|&i| &self.pages[i])))
+    }
+
+    /// Iterate over all pages in each tag.
+    pub fn pages_by_tag<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (&'a str, impl Iterator<Item = &'a Page>)> {
+        self.pages_by_tag
+            .iter()
+            .map(|(tag, indices)| (tag.as_str(), indices.iter().map(|&i| &self.pages[i])))
     }
 }

@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use minijinja::{Environment, context};
 use std::{
+    borrow::Cow,
     fs::{self},
     io::{BufWriter, Write},
     path::PathBuf,
@@ -18,6 +19,7 @@ use sitemap::SiteMap;
 use crate::{
     config::Config,
     markdown::{make_mdast, write_md_ast},
+    sitemap::Page,
 };
 
 /// A static string for usage errors.
@@ -105,7 +107,19 @@ impl Processor {
             fs::copy(&file.in_path, &file.out_path)?;
         }
         if let Some(list_template) = list_template {
-            for (folder, pages) in site_map.folders() {
+            let work = site_map
+                .folders()
+                .map(|(folder, pages)| {
+                    let out_path = self.output_dir.join(folder).join("index.html");
+                    let iter: Box<dyn Iterator<Item = &'_ Page>> = Box::new(pages);
+                    (out_path, folder.to_string_lossy(), iter)
+                })
+                .chain(site_map.pages_by_tag().map(|(tag, pages)| {
+                    let out_path = self.output_dir.join("tag").join(tag).join("index.html");
+                    let iter: Box<dyn Iterator<Item = &'_ Page>> = Box::new(pages);
+                    (out_path, Cow::Owned(format!("Tag - #{tag}")), iter)
+                }));
+            for (out_path, title, pages) in work {
                 let items = pages
                     .filter_map(|page| {
                         if page.front_matter.draft {
@@ -119,14 +133,13 @@ impl Processor {
                         })
                     })
                     .collect::<Vec<_>>();
-                let out_path = self.output_dir.join(folder).join("index.html");
                 if let Some(parent) = out_path.parent() {
                     fs::create_dir_all(parent)?;
                 }
                 let file = fs::File::create(&out_path)?;
                 let mut writer = BufWriter::new(file);
                 let ctx = context! {
-                  title => folder.to_string_lossy(),
+                  title => title,
                   items => items
                 };
                 list_template.render_to_write(ctx, &mut writer)?;

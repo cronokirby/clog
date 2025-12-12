@@ -119,7 +119,7 @@ impl Raw {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FrontMatter {
     pub title: String,
     pub draft: bool,
