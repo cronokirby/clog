@@ -1,4 +1,5 @@
 use crate::{
+    config::Config,
     frontmatter::FrontMatter,
     markdown::{find_yaml_frontmatter, make_mdast},
 };
@@ -79,11 +80,15 @@ pub struct SiteMap {
 }
 
 impl SiteMap {
-    pub fn build(in_path: &Path, out_path: &Path) -> anyhow::Result<Self> {
+    pub fn build(config: &Config, in_path: &Path, out_path: &Path) -> anyhow::Result<Self> {
         let mut statics: Vec<Static> = Vec::with_capacity(128);
         let mut pages: Vec<Page> = Vec::with_capacity(1024);
         let mut q = vec![Cow::Borrowed(in_path)];
         while let Some(dir) = q.pop() {
+            let rel_path = dir.strip_prefix(in_path)?;
+            if config.ignored_folders.contains(rel_path) {
+                continue;
+            }
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;
                 let file_type = entry.file_type()?;

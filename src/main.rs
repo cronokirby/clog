@@ -6,6 +6,7 @@ use std::{
     path::PathBuf,
 };
 
+mod config;
 mod frontmatter;
 mod fs_utils;
 mod markdown;
@@ -14,7 +15,10 @@ mod sitemap;
 use fs_utils::copy_dir;
 use sitemap::SiteMap;
 
-use crate::markdown::{make_mdast, write_md_ast};
+use crate::{
+    config::Config,
+    markdown::{make_mdast, write_md_ast},
+};
 
 /// A static string for usage errors.
 const USAGE: &str = "usage: clog <input_dir> <output_dir>";
@@ -39,6 +43,7 @@ impl Args {
 }
 
 struct Processor {
+    config_file: PathBuf,
     content_dir: PathBuf,
     static_dir: PathBuf,
     template_dir: PathBuf,
@@ -48,6 +53,7 @@ struct Processor {
 impl Processor {
     fn new(args: Args) -> Self {
         Self {
+            config_file: args.input_dir.join("config.yaml"),
             content_dir: args.input_dir.join("content"),
             static_dir: args.input_dir.join("static"),
             template_dir: args.input_dir.join("templates"),
@@ -55,14 +61,27 @@ impl Processor {
         }
     }
 
-    fn run(self) -> anyhow::Result<()> {
+    fn config(&self) -> anyhow::Result<Config> {
+        if !fs::exists(&self.config_file)? {
+            return Ok(Default::default());
+        }
+        let yaml = fs::read_to_string(&self.config_file)?;
+        Config::try_from_yaml(&yaml)
+    }
+
+    fn copy_static_files(&self) -> anyhow::Result<()> {
         if self.static_dir.is_dir() {
             copy_dir(&self.static_dir, &self.output_dir.join("static"))?;
         }
+        Ok(())
+    }
+
+    fn run(self) -> anyhow::Result<()> {
+        let config = self.config()?;
         let env = Environment::new();
         let template_data = fs::read_to_string(self.template_dir.join("index.html"))?;
         let template = env.template_from_str(&template_data)?;
-        let site_map = SiteMap::build(&self.content_dir, &self.output_dir)?;
+        let site_map = SiteMap::build(&config, &self.content_dir, &self.output_dir)?;
         for file in site_map.statics() {
             if let Some(parent) = file.out_path.parent() {
                 fs::create_dir_all(parent)?;
