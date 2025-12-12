@@ -12,6 +12,7 @@ mod frontmatter;
 mod fs_utils;
 mod markdown;
 mod sitemap;
+mod wikilink;
 
 use fs_utils::copy_dir;
 use sitemap::SiteMap;
