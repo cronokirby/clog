@@ -8,18 +8,22 @@ static RE: LazyLock<Regex> =
 ///
 /// "WikiLink" is the term Obsidian uses themselves a lot.
 #[derive(Clone, Debug, PartialEq)]
-struct WikiLink<'a> {
+pub struct WikiLink<'a> {
     pub display: Option<&'a str>,
     pub name: &'a str,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum Segment<'a> {
+pub enum Segment<'a> {
     Normal(&'a str),
     Link(WikiLink<'a>),
 }
 
 impl<'a> WikiLink<'a> {
+    pub fn display_or_name(&self) -> &'a str {
+        self.display.unwrap_or(self.name)
+    }
+
     /// Extract all of the links from a string.
     pub fn extract(data: &'a str) -> impl Iterator<Item = Self> {
         RE.captures_iter(data).map(|capture| {

@@ -203,6 +203,12 @@ impl SiteMap {
         self.pages.iter()
     }
 
+    /// Attempt to fetch a specific page by name.
+    pub fn page_by_name(&self, name: &str) -> Option<&Page> {
+        let i = *self.pages_by_name.get(name)?.first()?;
+        Some(&self.pages[i])
+    }
+
     /// Iterate over all of the folders
     pub fn folders<'a>(
         &'a self,

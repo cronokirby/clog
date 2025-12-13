@@ -154,7 +154,7 @@ impl Processor {
             let md = make_mdast(&content)?;
             let body = {
                 buf.clear();
-                write_md_ast(&mut buf, &md)?;
+                write_md_ast(&mut buf, &site_map, &md)?;
                 String::from_utf8_lossy(&buf)
             };
             if let Some(parent) = page.out_path.parent() {

@@ -6,6 +6,9 @@ mod counter;
 
 use counter::Sequential;
 
+use crate::sitemap::SiteMap;
+use crate::wikilink::{Segment, WikiLink};
+
 pub fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
     let options = {
         let mut out = ParseOptions::gfm();
@@ -18,6 +21,7 @@ pub fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
 
 pub fn write_md_ast<'root>(
     writer: &mut impl io::Write,
+    site_map: &SiteMap,
     ast: &'root mdast::Node,
 ) -> anyhow::Result<()> {
     enum Work<'a> {
@@ -166,7 +170,28 @@ pub fn write_md_ast<'root>(
                 fmt!("\n<pre>\n<code>\n$$\n{}\n$$\n</code>\n</pre>", n.value);
             }
             Text(n) => {
-                writer.write_all(n.value.as_bytes())?;
+                for segment in WikiLink::segment(&n.value) {
+                    use Segment::*;
+                    match segment {
+                        Normal(t) => {
+                            writer.write_all(t.as_bytes())?;
+                        }
+                        Link(link) => match site_map.page_by_name(link.name) {
+                            None => {
+                                // If the reference doesn't exist, use emphasis nonetheless.
+                                write!(writer, "<em>{}</em>", link.display_or_name())?;
+                            }
+                            Some(page) => {
+                                write!(
+                                    writer,
+                                    "<a href=\"{}\">{}</a>",
+                                    page.link,
+                                    link.display_or_name()
+                                )?;
+                            }
+                        },
+                    }
+                }
             }
             ThematicBreak(_) => {
                 lit!("\n<hr />");
@@ -211,7 +236,7 @@ pub fn write_md_ast<'root>(
             Some((identifier, children)) => {
                 write!(writer, "<li id=\"fn-{identifier}\">")?;
                 for n in children {
-                    write_md_ast(writer, n)?;
+                    write_md_ast(writer, site_map, n)?;
                 }
                 write!(writer, "</li>\n")?;
             }
