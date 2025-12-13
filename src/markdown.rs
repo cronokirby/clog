@@ -9,9 +9,22 @@ use counter::Sequential;
 use crate::sitemap::SiteMap;
 use crate::wikilink::{Segment, WikiLink};
 
+#[derive(Default)]
+pub struct Log {
+    pub math: bool,
+}
+
+impl Log {
+    pub fn merge(&mut self, other: &Self) {
+        self.math |= other.math;
+    }
+}
+
 pub fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
     let options = {
         let mut out = ParseOptions::gfm();
+        out.constructs.math_text = true;
+        out.constructs.math_flow = true;
         out.constructs.frontmatter = true;
         out
     };
@@ -22,8 +35,10 @@ pub fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
 pub fn write_md_ast<'root>(
     writer: &mut impl io::Write,
     site_map: &SiteMap,
+    katex_ctx: &katex::KatexContext,
     ast: &'root mdast::Node,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Log> {
+    let mut log = Log::default();
     enum Work<'a> {
         Node(&'a mdast::Node),
         Lit(&'static str),
@@ -164,10 +179,42 @@ pub fn write_md_ast<'root>(
                 fmt!("\n<pre><code>{}</code></pre>", n.value);
             }
             InlineMath(n) => {
-                fmt!("<code>${}$</code>", n.value);
+                log.math = true;
+                match katex::render_to_string(
+                    katex_ctx,
+                    &n.value,
+                    &katex::Settings {
+                        display_mode: false,
+                        ..Default::default()
+                    },
+                ) {
+                    Err(e) => {
+                        eprintln!("WARN: {e}");
+                        write!(writer, "<code>${}$</code>", n.value)?;
+                    }
+                    Ok(math) => {
+                        write!(writer, "<span class=\"katex-wrapper\">{}</span>", math)?;
+                    }
+                }
             }
             Math(n) => {
-                fmt!("\n<pre>\n<code>\n$$\n{}\n$$\n</code>\n</pre>", n.value);
+                log.math = true;
+                match katex::render_to_string(
+                    katex_ctx,
+                    &n.value,
+                    &katex::Settings {
+                        display_mode: true,
+                        ..Default::default()
+                    },
+                ) {
+                    Err(e) => {
+                        eprintln!("WARN: {e}");
+                        write!(writer, "<pre><code>$${}$$</code></pre>", n.value)?;
+                    }
+                    Ok(math) => {
+                        write!(writer, "<span class=\"katex-wrapper\">{}</span>", math)?;
+                    }
+                }
             }
             Text(n) => {
                 for segment in WikiLink::segment(&n.value) {
@@ -236,7 +283,8 @@ pub fn write_md_ast<'root>(
             Some((identifier, children)) => {
                 write!(writer, "<li id=\"fn-{identifier}\">")?;
                 for n in children {
-                    write_md_ast(writer, site_map, n)?;
+                    let child_log = write_md_ast(writer, site_map, katex_ctx, n)?;
+                    log.merge(&child_log);
                 }
                 write!(writer, "</li>\n")?;
             }
@@ -244,7 +292,7 @@ pub fn write_md_ast<'root>(
     }
     write!(writer, "</ol>\n</section>")?;
     write!(writer, "\n")?;
-    Ok(())
+    Ok(log)
 }
 
 pub fn find_yaml_frontmatter<'root>(ast: &'root mdast::Node) -> Option<&'root str> {

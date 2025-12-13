@@ -149,13 +149,14 @@ impl Processor {
         }
 
         let mut buf = Vec::with_capacity(1 << 14);
+        let katex_ctx = katex::KatexContext::default();
         for page in site_map.pages() {
             let content = fs::read_to_string(&page.in_path)?;
             let md = make_mdast(&content)?;
-            let body = {
+            let (log, body) = {
                 buf.clear();
-                write_md_ast(&mut buf, &site_map, &md)?;
-                String::from_utf8_lossy(&buf)
+                let log = write_md_ast(&mut buf, &site_map, &katex_ctx, &md)?;
+                (log, String::from_utf8_lossy(&buf))
             };
             let backlinks = site_map
                 .backlinks(page)
@@ -173,6 +174,7 @@ impl Processor {
             let mut writer = BufWriter::new(file);
             let ctx = context! {
               body => body,
+              math => log.math,
               title => page.front_matter.title,
               date => page.front_matter.date,
               authors => page.front_matter.authors,

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+katex-rs = "0.2.3"
 markdown = "1.0.0"
 minijinja = { version = "2.13.0", features = [] }
 regex = "1.12.2"
