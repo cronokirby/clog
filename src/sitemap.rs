@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const STATIC_EXTENSIONS: [&str; 2] = ["png", "jpg"];
+const STATIC_EXTENSIONS: [&str; 3] = ["png", "jpg", "svg"];
 
 fn is_static_extension(e: &OsStr) -> bool {
     STATIC_EXTENSIONS.iter().any(|&x| x == e)
