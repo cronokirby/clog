@@ -157,6 +157,15 @@ impl Processor {
                 write_md_ast(&mut buf, &site_map, &md)?;
                 String::from_utf8_lossy(&buf)
             };
+            let backlinks = site_map
+                .backlinks(page)
+                .map(|linking_page| {
+                    context! {
+                        title => linking_page.front_matter.title,
+                        link => linking_page.link
+                    }
+                })
+                .collect::<Vec<_>>();
             if let Some(parent) = page.out_path.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -170,6 +179,7 @@ impl Processor {
               published => page.front_matter.published,
               link => page.front_matter.link,
               tags => page.front_matter.tags,
+              backlinks => backlinks
             };
             content_template.render_to_write(ctx, &mut writer)?;
             writer.flush()?;

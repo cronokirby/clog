@@ -2,6 +2,7 @@ use crate::{
     config::Config,
     frontmatter::FrontMatter,
     markdown::{find_yaml_frontmatter, make_mdast},
+    wikilink::WikiLink,
 };
 use anyhow::anyhow;
 use std::{
@@ -49,6 +50,7 @@ pub struct Page {
     pub front_matter: FrontMatter,
     pub in_path: PathBuf,
     pub out_path: PathBuf,
+    index: usize,
 }
 
 impl Page {
@@ -78,6 +80,7 @@ pub struct SiteMap {
     pages_by_name: HashMap<String, Vec<usize>>,
     pages_by_tag: HashMap<String, Vec<usize>>,
     folders: HashMap<PathBuf, Vec<usize>>,
+    backlinks: Vec<Vec<usize>>,
 }
 
 impl SiteMap {
@@ -85,6 +88,8 @@ impl SiteMap {
         let mut statics: Vec<Static> = Vec::with_capacity(128);
         let mut pages: Vec<Page> = Vec::with_capacity(1024);
         let mut q = vec![Cow::Borrowed(in_path)];
+        let mut index = 0;
+        let mut backlinks: Vec<Vec<usize>> = Vec::with_capacity(1024);
         while let Some(dir) = q.pop() {
             let rel_path = dir.strip_prefix(in_path)?;
             if config.ignored_folders.contains(rel_path) {
@@ -137,7 +142,11 @@ impl SiteMap {
                     front_matter,
                     out_path: translate(in_path, out_path, &path.with_extension("html"))?,
                     in_path: path,
+                    index,
                 });
+                // We expect most of these to be empty.
+                backlinks.push(Vec::new());
+                index += 1;
             }
         }
         let mut pages_by_name = {
@@ -174,6 +183,17 @@ impl SiteMap {
             }
             out
         };
+        // Create backlinks
+        for (i, page) in pages.iter().enumerate() {
+            let content = fs::read_to_string(&page.in_path)?;
+            for link in WikiLink::extract(&content) {
+                let Some(&linked_page_i) = pages_by_name.get(link.name).and_then(|x| x.first())
+                else {
+                    continue;
+                };
+                backlinks[linked_page_i].push(i);
+            }
+        }
         // Sort grouped pages.
         for list in pages_by_name.values_mut() {
             sort_page_indices(&pages, list);
@@ -184,12 +204,16 @@ impl SiteMap {
         for list in folders.values_mut() {
             sort_page_indices(&pages, list);
         }
+        for list in &mut backlinks {
+            sort_page_indices(&pages, list);
+        }
         Ok(Self {
             statics,
             pages,
             pages_by_name,
             pages_by_tag,
             folders,
+            backlinks,
         })
     }
 
@@ -225,5 +249,10 @@ impl SiteMap {
         self.pages_by_tag
             .iter()
             .map(|(tag, indices)| (tag.as_str(), indices.iter().map(|&i| &self.pages[i])))
+    }
+
+    /// Iterate over all the pages that link to this page.
+    pub fn backlinks<'a>(&'a self, page: &Page) -> impl Iterator<Item = &'a Page> {
+        self.backlinks[page.index].iter().map(|&i| &self.pages[i])
     }
 }
