@@ -19,7 +19,7 @@ use sitemap::SiteMap;
 
 use crate::{
     config::Config,
-    markdown::{make_mdast, write_md_ast},
+    markdown::{extract_description, make_mdast, write_md_ast},
     sitemap::Page,
 };
 
@@ -172,6 +172,7 @@ impl Processor {
             }
             let file = fs::File::create(&page.out_path)?;
             let mut writer = BufWriter::new(file);
+            let description = extract_description(&md, 160);
             let ctx = context! {
               body => body,
               math => log.math,
@@ -182,7 +183,8 @@ impl Processor {
               link => page.front_matter.link,
               tags => page.front_matter.tags,
               backlinks => backlinks,
-              url => page.link
+              url => page.link,
+              description => description
             };
             content_template.render_to_write(ctx, &mut writer)?;
             writer.flush()?;

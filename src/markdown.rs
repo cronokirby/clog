@@ -309,3 +309,42 @@ pub fn find_yaml_frontmatter<'root>(ast: &'root mdast::Node) -> Option<&'root st
     }
     None
 }
+
+pub fn extract_description(ast: &mdast::Node, max_len: usize) -> String {
+    let mut out = String::with_capacity(max_len + 50);
+    let mut q = vec![ast];
+    'outer: while let Some(n) = q.pop() {
+        use mdast::Node::*;
+        match n {
+            Root(n) => q.extend(n.children.iter().rev()),
+            Blockquote(n) => q.extend(n.children.iter().rev()),
+            Paragraph(n) => q.extend(n.children.iter().rev()),
+            Heading(n) => q.extend(n.children.iter().rev()),
+            Emphasis(n) => q.extend(n.children.iter().rev()),
+            Strong(n) => q.extend(n.children.iter().rev()),
+            Delete(n) => q.extend(n.children.iter().rev()),
+            Link(n) => q.extend(n.children.iter().rev()),
+            List(n) => q.extend(n.children.iter().rev()),
+            ListItem(n) => q.extend(n.children.iter().rev()),
+            Text(n) => {
+                for c in n.value.chars() {
+                    if out.len() >= max_len {
+                        break 'outer;
+                    }
+                    out.push(if c.is_whitespace() { ' ' } else { c });
+                }
+            }
+            InlineCode(n) => {
+                for c in n.value.chars() {
+                    if out.len() >= max_len {
+                        break 'outer;
+                    }
+                    out.push(if c.is_whitespace() { ' ' } else { c });
+                }
+            }
+            _ => {}
+        }
+    }
+    out.truncate(out.trim_end().len());
+    out
+}
