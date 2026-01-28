@@ -17,6 +17,8 @@ pub struct Config {
     /// ignored_folders: ["Ignored/A"]
     /// ```
     pub ignored_folders: HashSet<PathBuf>,
+    /// Base URL for the site, used for sitemap generation.
+    pub base_url: Option<String>,
 }
 
 impl Config {

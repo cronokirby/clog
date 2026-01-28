@@ -190,6 +190,21 @@ impl Processor {
 
         self.copy_static_files()?;
 
+        if let Some(base_url) = &config.base_url {
+            let mut sitemap = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+            for page in site_map.pages() {
+                if page.front_matter.draft {
+                    continue;
+                }
+                sitemap.push_str(&format!(
+                    "<url><loc>{}{}</loc><lastmod>{}</lastmod></url>\n",
+                    base_url, page.link, page.front_matter.date
+                ));
+            }
+            sitemap.push_str("</urlset>\n");
+            fs::write(self.output_dir.join("sitemap.xml"), sitemap)?;
+        }
+
         Ok(())
     }
 }
