@@ -181,7 +181,8 @@ impl Processor {
               published => page.front_matter.published,
               link => page.front_matter.link,
               tags => page.front_matter.tags,
-              backlinks => backlinks
+              backlinks => backlinks,
+              url => page.link
             };
             content_template.render_to_write(ctx, &mut writer)?;
             writer.flush()?;
