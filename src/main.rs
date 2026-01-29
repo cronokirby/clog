@@ -12,6 +12,7 @@ mod frontmatter;
 mod fs_utils;
 mod markdown;
 mod sitemap;
+mod slug;
 mod wikilink;
 
 use fs_utils::copy_dir;
@@ -21,6 +22,7 @@ use crate::{
     config::Config,
     markdown::{extract_description, make_mdast, write_md_ast},
     sitemap::Page,
+    slug::{slugify, slugify_path},
 };
 
 /// A static string for usage errors.
@@ -111,12 +113,16 @@ impl Processor {
             let work = site_map
                 .folders()
                 .map(|(folder, pages)| {
-                    let out_path = self.output_dir.join(folder).join("index.html");
+                    let out_path = self.output_dir.join(slugify_path(folder)).join("index.html");
                     let iter: Box<dyn Iterator<Item = &'_ Page>> = Box::new(pages);
                     (out_path, folder.to_string_lossy(), iter)
                 })
                 .chain(site_map.pages_by_tag().map(|(tag, pages)| {
-                    let out_path = self.output_dir.join("tag").join(tag).join("index.html");
+                    let out_path = self
+                        .output_dir
+                        .join("tag")
+                        .join(slugify(tag))
+                        .join("index.html");
                     let iter: Box<dyn Iterator<Item = &'_ Page>> = Box::new(pages);
                     (out_path, Cow::Owned(format!("Tag - #{tag}")), iter)
                 }));

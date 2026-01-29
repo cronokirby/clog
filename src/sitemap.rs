@@ -2,6 +2,7 @@ use crate::{
     config::Config,
     frontmatter::FrontMatter,
     markdown::{find_yaml_frontmatter, make_mdast},
+    slug::slugify_path,
     wikilink::WikiLink,
 };
 use anyhow::anyhow;
@@ -130,7 +131,8 @@ impl SiteMap {
                     .to_string();
                 let link = {
                     let rel_path = path.strip_prefix(in_path)?.with_extension("html");
-                    let out_segment = rel_path.to_str().unwrap();
+                    let slugified = slugify_path(&rel_path);
+                    let out_segment = slugified.to_str().unwrap();
                     let mut out = String::with_capacity(1 + out_segment.len());
                     out.push('/');
                     out.push_str(out_segment);
@@ -140,7 +142,9 @@ impl SiteMap {
                     name,
                     link,
                     front_matter,
-                    out_path: translate(in_path, out_path, &path.with_extension("html"))?,
+                    out_path: out_path.join(slugify_path(
+                        &path.strip_prefix(in_path)?.with_extension("html"),
+                    )),
                     in_path: path,
                     index,
                 });
