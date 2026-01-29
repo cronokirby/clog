@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use unidecode::unidecode_char;
+
 /// Convert a string into a URL-safe slug.
 ///
 /// This function:
@@ -21,33 +23,35 @@ pub fn slugify(s: &str) -> String {
     let mut prev_was_hyphen = true; // Start true to trim leading hyphens
 
     for c in s.chars() {
-        match c {
-            // Keep alphanumeric characters (lowercased)
-            c if c.is_ascii_alphanumeric() => {
-                result.push(c.to_ascii_lowercase());
-                prev_was_hyphen = false;
-            }
-            // Keep periods (for file extensions)
-            '.' => {
-                result.push('.');
-                prev_was_hyphen = false;
-            }
-            // Convert spaces and underscores to hyphens
-            ' ' | '_' => {
-                if !prev_was_hyphen {
-                    result.push('-');
-                    prev_was_hyphen = true;
+        for c in unidecode_char(c).chars() {
+            match c {
+                // Keep alphanumeric characters (lowercased)
+                c if c.is_ascii_alphanumeric() => {
+                    result.push(c.to_ascii_lowercase());
+                    prev_was_hyphen = false;
                 }
-            }
-            // Keep existing hyphens (but collapse consecutive ones)
-            '-' => {
-                if !prev_was_hyphen {
-                    result.push('-');
-                    prev_was_hyphen = true;
+                // Keep periods (for file extensions)
+                '.' => {
+                    result.push('.');
+                    prev_was_hyphen = false;
                 }
+                // Convert spaces and underscores to hyphens
+                ' ' | '_' => {
+                    if !prev_was_hyphen {
+                        result.push('-');
+                        prev_was_hyphen = true;
+                    }
+                }
+                // Keep existing hyphens (but collapse consecutive ones)
+                '-' => {
+                    if !prev_was_hyphen {
+                        result.push('-');
+                        prev_was_hyphen = true;
+                    }
+                }
+                // Remove all other characters (apostrophes, quotes, colons, etc.)
+                _ => {}
             }
-            // Remove all other characters (apostrophes, quotes, colons, etc.)
-            _ => {}
         }
     }
 

@@ -12,6 +12,7 @@ regex = "1.12.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"
 time = { version = "0.3.44", features = ["formatting"] }
+unidecode = "0.3.0"
 
 # Build all dependencies in release mode, even for dev builds.
 # This should make debug builds faster.
