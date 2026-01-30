@@ -113,20 +113,24 @@ impl Processor {
             let work = site_map
                 .folders()
                 .map(|(folder, pages)| {
-                    let out_path = self.output_dir.join(slugify_path(folder)).join("index.html");
+                    let slugified = slugify_path(folder);
+                    let out_path = self.output_dir.join(&slugified).join("index.html");
+                    let url = format!("/{}/", slugified.display());
                     let iter: Box<dyn Iterator<Item = &'_ Page>> = Box::new(pages);
-                    (out_path, folder.to_string_lossy(), iter)
+                    (out_path, folder.to_string_lossy(), url, iter)
                 })
                 .chain(site_map.pages_by_tag().map(|(tag, pages)| {
+                    let slugified_tag = slugify(tag);
                     let out_path = self
                         .output_dir
                         .join("tag")
-                        .join(slugify(tag))
+                        .join(&slugified_tag)
                         .join("index.html");
+                    let url = format!("/tag/{}/", slugified_tag);
                     let iter: Box<dyn Iterator<Item = &'_ Page>> = Box::new(pages);
-                    (out_path, Cow::Owned(format!("Tag - #{tag}")), iter)
+                    (out_path, Cow::Owned(format!("Tag - #{tag}")), url, iter)
                 }));
-            for (out_path, title, pages) in work {
+            for (out_path, title, url, pages) in work {
                 let items = pages
                     .filter_map(|page| {
                         if page.front_matter.draft {
@@ -147,7 +151,8 @@ impl Processor {
                 let mut writer = BufWriter::new(file);
                 let ctx = context! {
                   title => title,
-                  items => items
+                  items => items,
+                  url => url
                 };
                 list_template.render_to_write(ctx, &mut writer)?;
                 writer.flush()?;
