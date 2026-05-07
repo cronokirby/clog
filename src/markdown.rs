@@ -6,6 +6,7 @@ mod counter;
 
 use counter::Sequential;
 
+use crate::prettify::prettify;
 use crate::sitemap::SiteMap;
 use crate::wikilink::{Segment, WikiLink};
 
@@ -217,7 +218,8 @@ pub fn write_md_ast<'root>(
                 }
             }
             Text(n) => {
-                for segment in WikiLink::segment(&n.value) {
+                let prettified = prettify(&n.value);
+                for segment in WikiLink::segment(&prettified) {
                     use Segment::*;
                     match segment {
                         Normal(t) => {

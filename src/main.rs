@@ -11,6 +11,7 @@ mod config;
 mod frontmatter;
 mod fs_utils;
 mod markdown;
+mod prettify;
 mod sitemap;
 mod slug;
 mod wikilink;
