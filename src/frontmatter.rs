@@ -51,6 +51,24 @@ enum StringOrVec {
     Many(Vec<String>),
 }
 
+fn opt_bool_or_string<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<BoolOrString>::deserialize(deserializer)?;
+    Ok(opt.map(|v| match v {
+        BoolOrString::Bool(b) => b,
+        BoolOrString::String(s) => s.to_lowercase() == "true",
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BoolOrString {
+    Bool(bool),
+    String(String),
+}
+
 #[derive(Default, Serialize, Deserialize)]
 struct Raw {
     title: Option<String>,
@@ -60,10 +78,17 @@ struct Raw {
     published: Option<String>,
     #[serde(default, deserialize_with = "opt_string_or_vec")]
     authors: Option<Vec<String>>,
-    draft: Option<String>,
+    #[serde(default, deserialize_with = "opt_bool_or_string")]
+    draft: Option<bool>,
+    #[serde(default, deserialize_with = "opt_bool_or_string")]
+    katex: Option<bool>,
     link: Option<String>,
     #[serde(default, deserialize_with = "opt_string_or_vec")]
+    aliases: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "opt_string_or_vec")]
     tags: Option<Vec<String>>,
+    #[serde(default, rename = "note-tags", deserialize_with = "opt_string_or_vec")]
+    note_tags: Option<Vec<String>>,
 }
 
 impl Raw {
@@ -93,10 +118,11 @@ impl Raw {
     }
 
     fn draft(&self) -> bool {
-        self.draft
-            .as_ref()
-            .map(|x| x.to_lowercase() == "true")
-            .unwrap_or(false)
+        self.draft.unwrap_or(false)
+    }
+
+    fn katex(&self) -> Option<bool> {
+        self.katex
     }
 
     fn authors(&self) -> Vec<String> {
@@ -114,8 +140,16 @@ impl Raw {
         self.link.clone()
     }
 
+    fn aliases(&self) -> Vec<String> {
+        self.aliases.clone().unwrap_or_default()
+    }
+
     fn tags(&self) -> Vec<String> {
-        self.tags.clone().unwrap_or_default()
+        let mut tags = self.tags.clone().unwrap_or_default();
+        if let Some(note_tags) = &self.note_tags {
+            tags.extend(note_tags.iter().cloned());
+        }
+        tags
     }
 }
 
@@ -127,6 +161,8 @@ pub struct FrontMatter {
     pub authors: Vec<String>,
     pub published: Option<String>,
     pub link: Option<String>,
+    pub aliases: Vec<String>,
+    pub katex: Option<bool>,
     pub tags: Vec<String>,
 }
 
@@ -145,6 +181,7 @@ impl FrontMatter {
         };
         let mut tags = raw.tags();
         tags.sort();
+        tags.dedup();
         Ok(Self {
             title: raw.title(path)?,
             draft: raw.draft(),
@@ -152,6 +189,8 @@ impl FrontMatter {
             authors: raw.authors(),
             published: raw.published(),
             link: raw.link(),
+            aliases: raw.aliases(),
+            katex: raw.katex(),
             tags,
         })
     }

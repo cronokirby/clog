@@ -22,15 +22,54 @@ impl Log {
 }
 
 pub fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
+    make_mdast_with_math(data, true)
+}
+
+pub fn make_mdast_with_math(data: &str, math: bool) -> anyhow::Result<mdast::Node> {
     let options = {
         let mut out = ParseOptions::gfm();
-        out.constructs.math_text = true;
-        out.constructs.math_flow = true;
+        out.constructs.math_text = math;
+        out.constructs.math_flow = math;
         out.constructs.frontmatter = true;
         out
     };
     let ast = to_mdast(data, &options).map_err(|e| anyhow!("failed to parse markdown: {e}"))?;
     Ok(ast)
+}
+
+fn katex_settings(display_mode: bool) -> katex::Settings {
+    let settings = katex::Settings {
+        display_mode,
+        ..Default::default()
+    };
+    {
+        let mut macros = settings.macros.borrow_mut();
+        for (name, expansion) in [
+            ("\\sk", "\\mathsf{sk}"),
+            ("\\ck", "\\mathsf{ck}"),
+            ("\\tk", "\\mathsf{tk}"),
+            ("\\Fp", "\\mathbb{F}_p"),
+            ("\\poly", "\\operatorname{poly}"),
+            ("\\secp", "\\lambda"),
+            ("\\p", "p"),
+        ] {
+            macros.insert(
+                name.to_owned(),
+                katex::macros::MacroDefinition::String(expansion.to_owned()),
+            );
+        }
+    }
+    settings
+}
+
+fn table_cell_open_tag(header: bool, align: Option<mdast::AlignKind>) -> String {
+    let tag = if header { "th" } else { "td" };
+    match align {
+        Some(mdast::AlignKind::Left) => format!("\n<{tag} style=\"text-align: left\">"),
+        Some(mdast::AlignKind::Right) => format!("\n<{tag} style=\"text-align: right\">"),
+        Some(mdast::AlignKind::Center) => format!("\n<{tag} style=\"text-align: center\">"),
+        Some(mdast::AlignKind::None) | None => format!("\n<{tag}>"),
+    }
 }
 
 pub fn write_md_ast<'root>(
@@ -42,6 +81,16 @@ pub fn write_md_ast<'root>(
     let mut log = Log::default();
     enum Work<'a> {
         Node(&'a mdast::Node),
+        TableRow {
+            node: &'a mdast::Node,
+            header: bool,
+            align: &'a [mdast::AlignKind],
+        },
+        TableCell {
+            node: &'a mdast::Node,
+            header: bool,
+            align: Option<mdast::AlignKind>,
+        },
         Lit(&'static str),
         Str(String),
     }
@@ -73,17 +122,53 @@ pub fn write_md_ast<'root>(
     }
     q.push(Work::Node(ast));
     while let Some(work) = q.pop() {
-        let node = match work {
-            Work::Str(s) => {
-                writer.write_all(s.as_bytes())?;
-                continue;
-            }
-            Work::Lit(s) => {
-                writer.write_all(s.as_bytes())?;
-                continue;
-            }
-            Work::Node(node) => node,
-        };
+        let node =
+            match work {
+                Work::Str(s) => {
+                    writer.write_all(s.as_bytes())?;
+                    continue;
+                }
+                Work::Lit(s) => {
+                    writer.write_all(s.as_bytes())?;
+                    continue;
+                }
+                Work::TableRow {
+                    node,
+                    header,
+                    align,
+                } => {
+                    let mdast::Node::TableRow(n) = node else {
+                        q.push(Work::Node(node));
+                        continue;
+                    };
+                    q.push(Work::Lit("\n</tr>"));
+                    q.extend(n.children.iter().enumerate().rev().map(|(i, node)| {
+                        Work::TableCell {
+                            node,
+                            header,
+                            align: align.get(i).copied(),
+                        }
+                    }));
+                    q.push(Work::Lit("\n<tr>"));
+                    continue;
+                }
+                Work::TableCell {
+                    node,
+                    header,
+                    align,
+                } => {
+                    let mdast::Node::TableCell(n) = node else {
+                        q.push(Work::Node(node));
+                        continue;
+                    };
+                    let tag = if header { "th" } else { "td" };
+                    q.push(Work::Str(format!("</{tag}>")));
+                    q.extend(n.children.iter().rev().map(Work::Node));
+                    q.push(Work::Str(table_cell_open_tag(header, align)));
+                    continue;
+                }
+                Work::Node(node) => node,
+            };
         use mdast::Node::*;
         match node {
             Root(n) => {
@@ -181,14 +266,7 @@ pub fn write_md_ast<'root>(
             }
             InlineMath(n) => {
                 log.math = true;
-                match katex::render_to_string(
-                    katex_ctx,
-                    &n.value,
-                    &katex::Settings {
-                        display_mode: false,
-                        ..Default::default()
-                    },
-                ) {
+                match katex::render_to_string(katex_ctx, &n.value, &katex_settings(false)) {
                     Err(e) => {
                         eprintln!("WARN: {e}");
                         write!(writer, "<code>${}$</code>", n.value)?;
@@ -200,14 +278,7 @@ pub fn write_md_ast<'root>(
             }
             Math(n) => {
                 log.math = true;
-                match katex::render_to_string(
-                    katex_ctx,
-                    &n.value,
-                    &katex::Settings {
-                        display_mode: true,
-                        ..Default::default()
-                    },
-                ) {
+                match katex::render_to_string(katex_ctx, &n.value, &katex_settings(true)) {
                     Err(e) => {
                         eprintln!("WARN: {e}");
                         write!(writer, "<pre><code>$${}$$</code></pre>", n.value)?;
@@ -247,18 +318,32 @@ pub fn write_md_ast<'root>(
             }
             Table(n) => {
                 lit!("\n</table>");
-                children!(n.children);
+                q.extend(
+                    n.children
+                        .iter()
+                        .enumerate()
+                        .rev()
+                        .map(|(i, node)| Work::TableRow {
+                            node,
+                            header: i == 0,
+                            align: &n.align,
+                        }),
+                );
                 lit!("\n<table>");
             }
             TableRow(n) => {
                 lit!("\n</tr>");
-                children!(n.children);
+                q.extend(n.children.iter().rev().map(|node| Work::TableCell {
+                    node,
+                    header: false,
+                    align: None,
+                }));
                 lit!("\n<tr>");
             }
             TableCell(n) => {
-                lit!("</th>");
+                lit!("</td>");
                 children!(n.children);
-                lit!("\n<th>");
+                lit!("\n<td>");
             }
             Heading(n) => {
                 fmt!("</h{}>", n.depth);
@@ -276,23 +361,25 @@ pub fn write_md_ast<'root>(
             Definition(_) => unimplemented!("Definition"),
         }
     }
-    write!(writer, "<section class=\"footnotes\">\n<ol>\n")?;
-    for def in footnote_defs.into_iter() {
-        match def {
-            None => {
-                write!(writer, "<li>???</li>\n")?;
-            }
-            Some((identifier, children)) => {
-                write!(writer, "<li id=\"fn-{identifier}\">")?;
-                for n in children {
-                    let child_log = write_md_ast(writer, site_map, katex_ctx, n)?;
-                    log.merge(&child_log);
+    if footnote_defs.iter().any(Option::is_some) {
+        write!(writer, "<section class=\"footnotes\">\n<ol>\n")?;
+        for def in footnote_defs.into_iter() {
+            match def {
+                None => {
+                    write!(writer, "<li>???</li>\n")?;
                 }
-                write!(writer, "</li>\n")?;
+                Some((identifier, children)) => {
+                    write!(writer, "<li id=\"fn-{identifier}\">")?;
+                    for n in children {
+                        let child_log = write_md_ast(writer, site_map, katex_ctx, n)?;
+                        log.merge(&child_log);
+                    }
+                    write!(writer, "</li>\n")?;
+                }
             }
         }
+        write!(writer, "</ol>\n</section>")?;
     }
-    write!(writer, "</ol>\n</section>")?;
     write!(writer, "\n")?;
     Ok(log)
 }

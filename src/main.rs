@@ -21,7 +21,7 @@ use sitemap::SiteMap;
 
 use crate::{
     config::Config,
-    markdown::{extract_description, make_mdast, write_md_ast},
+    markdown::{extract_description, make_mdast_with_math, write_md_ast},
     sitemap::Page,
     slug::{slugify, slugify_path},
 };
@@ -54,6 +54,65 @@ struct Processor {
     static_dir: PathBuf,
     template_dir: PathBuf,
     output_dir: PathBuf,
+}
+
+fn tag_link(tag: &str) -> String {
+    format!("/tag/{}/index.html", slugify(tag))
+}
+
+fn tag_contexts<'a>(tags: impl IntoIterator<Item = &'a String>) -> Vec<minijinja::Value> {
+    tags.into_iter()
+        .map(|tag| {
+            context! {
+                name => tag,
+                link => tag_link(tag),
+            }
+        })
+        .collect()
+}
+
+fn normalize_alias_path(alias: &str) -> Option<PathBuf> {
+    let mut alias = alias.trim();
+    alias = alias.split_once('#').map(|(path, _)| path).unwrap_or(alias);
+    alias = alias.split_once('?').map(|(path, _)| path).unwrap_or(alias);
+    if alias.contains("://") {
+        return None;
+    }
+    while let Some(stripped) = alias.strip_prefix("../") {
+        alias = stripped;
+    }
+    while let Some(stripped) = alias.strip_prefix("./") {
+        alias = stripped;
+    }
+    alias = alias.trim_start_matches('/');
+    alias = alias.trim_end_matches('/');
+    if alias.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(alias))
+    }
+}
+
+fn alias_out_path(output_dir: &std::path::Path, alias: &str) -> Option<PathBuf> {
+    let normalized = normalize_alias_path(alias)?;
+    let slugified = slugify_path(&normalized);
+    if slugified.extension().is_some() {
+        Some(output_dir.join(slugified))
+    } else {
+        Some(output_dir.join(slugified).join("index.html"))
+    }
+}
+
+fn redirect_html(target: &str) -> String {
+    format!(
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta http-equiv=\"refresh\" content=\"0; url={target}\">\n<link rel=\"canonical\" href=\"{target}\">\n<title>Redirecting...</title>\n</head>\n<body>\n<a href=\"{target}\">Redirecting...</a>\n</body>\n</html>\n"
+    )
+}
+
+fn extensionless_alias(link: &str) -> Option<String> {
+    let path = link.strip_prefix('/')?;
+    let path = path.strip_suffix(".html")?;
+    Some(path.to_owned())
 }
 
 impl Processor {
@@ -141,7 +200,8 @@ impl Processor {
                             title => page.front_matter.title,
                             date => page.front_matter.date,
                             link => page.link,
-                            tags => page.front_matter.tags
+                            tags => page.front_matter.tags,
+                            tag_links => tag_contexts(&page.front_matter.tags),
                         })
                     })
                     .collect::<Vec<_>>();
@@ -163,8 +223,11 @@ impl Processor {
         let mut buf = Vec::with_capacity(1 << 14);
         let katex_ctx = katex::KatexContext::default();
         for page in site_map.pages() {
+            if page.front_matter.draft {
+                continue;
+            }
             let content = fs::read_to_string(&page.in_path)?;
-            let md = make_mdast(&content)?;
+            let md = make_mdast_with_math(&content, page.front_matter.katex.unwrap_or(true))?;
             let (log, body) = {
                 buf.clear();
                 let log = write_md_ast(&mut buf, &site_map, &katex_ctx, &md)?;
@@ -194,6 +257,7 @@ impl Processor {
               published => page.front_matter.published,
               link => page.front_matter.link,
               tags => page.front_matter.tags,
+              tag_links => tag_contexts(&page.front_matter.tags),
               backlinks => backlinks,
               url => page.link,
               description => description
@@ -201,11 +265,42 @@ impl Processor {
             content_template.render_to_write(ctx, &mut writer)?;
             writer.flush()?;
         }
+        for page in site_map.pages() {
+            if page.front_matter.draft {
+                continue;
+            }
+            for alias in &page.front_matter.aliases {
+                let Some(out_path) = alias_out_path(&self.output_dir, alias) else {
+                    continue;
+                };
+                if out_path == page.out_path || out_path.exists() {
+                    continue;
+                }
+                if let Some(parent) = out_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(out_path, redirect_html(&page.link))?;
+            }
+            if let Some(alias) = extensionless_alias(&page.link) {
+                let Some(out_path) = alias_out_path(&self.output_dir, &alias) else {
+                    continue;
+                };
+                if out_path == page.out_path || out_path.exists() {
+                    continue;
+                }
+                if let Some(parent) = out_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(out_path, redirect_html(&page.link))?;
+            }
+        }
 
         self.copy_static_files()?;
 
         if let Some(base_url) = &config.base_url {
-            let mut sitemap = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+            let mut sitemap = String::from(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
+            );
             for page in site_map.pages() {
                 if page.front_matter.draft {
                     continue;

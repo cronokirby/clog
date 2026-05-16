@@ -74,6 +74,46 @@ fn sort_page_indices(pages: &[Page], indices: &mut [PageIndex]) {
     });
 }
 
+fn normalized_alias_name(alias: &str) -> Option<String> {
+    let mut alias = alias.trim();
+    alias = alias.split_once('#').map(|(path, _)| path).unwrap_or(alias);
+    alias = alias.split_once('?').map(|(path, _)| path).unwrap_or(alias);
+    if alias.contains("://") {
+        return None;
+    }
+    while let Some(stripped) = alias.strip_prefix("../") {
+        alias = stripped;
+    }
+    while let Some(stripped) = alias.strip_prefix("./") {
+        alias = stripped;
+    }
+    alias = alias.trim_start_matches('/');
+    alias = alias.trim_end_matches('/');
+    if alias.is_empty() {
+        return None;
+    }
+    Some(alias.to_owned())
+}
+
+fn page_lookup_names(page: &Page, base: &Path) -> Vec<String> {
+    let mut names = vec![page.name.clone()];
+    if let Ok(rel_path) = page.in_path.strip_prefix(base) {
+        let rel_name = rel_path.with_extension("");
+        if let Some(rel_name) = rel_name.to_str() {
+            let rel_name = rel_name.replace(std::path::MAIN_SEPARATOR, "/");
+            if rel_name != page.name {
+                names.push(rel_name);
+            }
+        }
+    }
+    for alias in &page.front_matter.aliases {
+        if let Some(alias) = normalized_alias_name(alias) {
+            names.push(alias);
+        }
+    }
+    names
+}
+
 #[derive(Debug)]
 pub struct SiteMap {
     statics: Vec<Static>,
@@ -156,13 +196,21 @@ impl SiteMap {
         let mut pages_by_name = {
             let mut out = HashMap::<_, Vec<_>>::new();
             for (i, page) in pages.iter().enumerate() {
-                out.entry(page.name.clone()).or_default().push(i);
+                if page.front_matter.draft {
+                    continue;
+                }
+                for name in page_lookup_names(page, in_path) {
+                    out.entry(name).or_default().push(i);
+                }
             }
             out
         };
         let mut pages_by_tag = {
             let mut out = HashMap::<_, Vec<_>>::new();
             for (i, page) in pages.iter().enumerate() {
+                if page.front_matter.draft {
+                    continue;
+                }
                 for tag in &page.front_matter.tags {
                     out.entry(tag.clone()).or_default().push(i);
                 }
@@ -181,6 +229,9 @@ impl SiteMap {
         let mut folders = {
             let mut out = HashMap::<_, Vec<_>>::new();
             for (i, page) in pages.iter().enumerate() {
+                if page.front_matter.draft {
+                    continue;
+                }
                 if let Some(folder) = page.folder(in_path)? {
                     out.entry(folder).or_default().push(i);
                 }
@@ -189,6 +240,9 @@ impl SiteMap {
         };
         // Create backlinks
         for (i, page) in pages.iter().enumerate() {
+            if page.front_matter.draft {
+                continue;
+            }
             let content = fs::read_to_string(&page.in_path)?;
             for link in WikiLink::extract(&content) {
                 let Some(&linked_page_i) = pages_by_name.get(link.name).and_then(|x| x.first())
@@ -209,6 +263,8 @@ impl SiteMap {
             sort_page_indices(&pages, list);
         }
         for list in &mut backlinks {
+            list.sort_unstable();
+            list.dedup();
             sort_page_indices(&pages, list);
         }
         Ok(Self {
