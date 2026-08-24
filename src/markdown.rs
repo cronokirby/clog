@@ -1,6 +1,8 @@
 use anyhow::anyhow;
 use markdown::{ParseOptions, mdast, to_mdast};
+use regex::Regex;
 use std::io;
+use std::sync::LazyLock;
 
 mod counter;
 
@@ -25,7 +27,12 @@ pub fn make_mdast(data: &str) -> anyhow::Result<mdast::Node> {
     make_mdast_with_math(data, true)
 }
 
+/// Matches an Obsidian callout marker like `[!note]` at the start of a blockquote line.
+static CALLOUT_MARKER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^([ \t]*(?:>[ \t]*)+)\[!\w+\][-+]?[ \t]*").unwrap());
+
 pub fn make_mdast_with_math(data: &str, math: bool) -> anyhow::Result<mdast::Node> {
+    let data = CALLOUT_MARKER.replace_all(data, "$1");
     let options = {
         let mut out = ParseOptions::gfm();
         out.constructs.math_text = math;
@@ -33,7 +40,7 @@ pub fn make_mdast_with_math(data: &str, math: bool) -> anyhow::Result<mdast::Nod
         out.constructs.frontmatter = true;
         out
     };
-    let ast = to_mdast(data, &options).map_err(|e| anyhow!("failed to parse markdown: {e}"))?;
+    let ast = to_mdast(&data, &options).map_err(|e| anyhow!("failed to parse markdown: {e}"))?;
     Ok(ast)
 }
 
@@ -416,11 +423,17 @@ pub fn extract_description(ast: &mdast::Node, max_len: usize) -> String {
             List(n) => q.extend(n.children.iter().rev()),
             ListItem(n) => q.extend(n.children.iter().rev()),
             Text(n) => {
-                for c in n.value.chars() {
-                    if out.len() >= max_len {
-                        break 'outer;
+                for segment in WikiLink::segment(&n.value) {
+                    let text = match segment {
+                        Segment::Normal(t) => t,
+                        Segment::Link(link) => link.display_or_name(),
+                    };
+                    for c in text.chars() {
+                        if out.len() >= max_len {
+                            break 'outer;
+                        }
+                        out.push(if c.is_whitespace() { ' ' } else { c });
                     }
-                    out.push(if c.is_whitespace() { ' ' } else { c });
                 }
             }
             InlineCode(n) => {

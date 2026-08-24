@@ -71,6 +71,30 @@ fn tag_contexts<'a>(tags: impl IntoIterator<Item = &'a String>) -> Vec<minijinja
         .collect()
 }
 
+/// Render an author string, converting wikilinks into refs.
+///
+/// Links to the author's page if it exists, otherwise just their name.
+fn render_author(site_map: &SiteMap, author: &str) -> String {
+    use crate::wikilink::{Segment, WikiLink};
+    let mut out = String::with_capacity(author.len());
+    for segment in WikiLink::segment(author) {
+        match segment {
+            Segment::Normal(t) => out.push_str(t),
+            Segment::Link(link) => match site_map.page_by_name(link.name) {
+                None => out.push_str(link.display_or_name()),
+                Some(page) => {
+                    out.push_str(&format!(
+                        "<a href=\"{}\">{}</a>",
+                        page.link,
+                        link.display_or_name()
+                    ));
+                }
+            },
+        }
+    }
+    out
+}
+
 fn normalize_alias_path(alias: &str) -> Option<PathBuf> {
     let mut alias = alias.trim();
     alias = alias.split_once('#').map(|(path, _)| path).unwrap_or(alias);
@@ -253,7 +277,12 @@ impl Processor {
               math => log.math,
               title => page.front_matter.title,
               date => page.front_matter.date,
-              authors => page.front_matter.authors,
+              authors => page
+                  .front_matter
+                  .authors
+                  .iter()
+                  .map(|a| render_author(&site_map, a))
+                  .collect::<Vec<_>>(),
               published => page.front_matter.published,
               link => page.front_matter.link,
               tags => page.front_matter.tags,
