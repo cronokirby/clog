@@ -3,6 +3,11 @@
 <link rel="stylesheet" href="/static/index.css">
 </head>
 <body>
+{% if collections %}
+<div class="collections">
+  In {% for collection in collections %}{{ collection }}{% if not loop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
 {{ body }}
 </body>
 </html>

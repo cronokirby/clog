@@ -27,7 +27,7 @@ fn date_prefix(s: &str) -> Option<&str> {
         .and_then(|caps| caps.get(1).map(|m| m.as_str()))
 }
 
-/// Allow `authors` to be:
+/// Allow a string-list field to be:
 /// - missing/null  → None
 /// - "Alice"       → Some(vec!["Alice"])
 /// - ["Alice","Bob"] → Some(vec!["Alice","Bob"])
@@ -78,6 +78,8 @@ struct Raw {
     published: Option<String>,
     #[serde(default, deserialize_with = "opt_string_or_vec")]
     authors: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "opt_string_or_vec")]
+    collections: Option<Vec<String>>,
     #[serde(default, deserialize_with = "opt_bool_or_string")]
     draft: Option<bool>,
     #[serde(default, deserialize_with = "opt_bool_or_string")]
@@ -129,6 +131,10 @@ impl Raw {
         self.authors.clone().unwrap_or_default()
     }
 
+    fn collections(&self) -> Vec<String> {
+        self.collections.clone().unwrap_or_default()
+    }
+
     fn published(&self) -> Option<String> {
         self.published
             .as_ref()
@@ -159,6 +165,7 @@ pub struct FrontMatter {
     pub draft: bool,
     pub date: String,
     pub authors: Vec<String>,
+    pub collections: Vec<String>,
     pub published: Option<String>,
     pub link: Option<String>,
     pub aliases: Vec<String>,
@@ -187,6 +194,7 @@ impl FrontMatter {
             draft: raw.draft(),
             date: raw.date(path)?,
             authors: raw.authors(),
+            collections: raw.collections(),
             published: raw.published(),
             link: raw.link(),
             aliases: raw.aliases(),

@@ -71,13 +71,13 @@ fn tag_contexts<'a>(tags: impl IntoIterator<Item = &'a String>) -> Vec<minijinja
         .collect()
 }
 
-/// Render an author string, converting wikilinks into refs.
+/// Render a metadata entry, converting wikilinks into refs.
 ///
-/// Links to the author's page if it exists, otherwise just their name.
-fn render_author(site_map: &SiteMap, author: &str) -> String {
+/// Links to an existing page, otherwise just displays the link's label.
+fn render_metadata_entry(site_map: &SiteMap, entry: &str) -> String {
     use crate::wikilink::{Segment, WikiLink};
-    let mut out = String::with_capacity(author.len());
-    for segment in WikiLink::segment(author) {
+    let mut out = String::with_capacity(entry.len());
+    for segment in WikiLink::segment(entry) {
         match segment {
             Segment::Normal(t) => out.push_str(t),
             Segment::Link(link) => match site_map.page_by_name(link.name) {
@@ -281,7 +281,13 @@ impl Processor {
                   .front_matter
                   .authors
                   .iter()
-                  .map(|a| render_author(&site_map, a))
+                  .map(|a| render_metadata_entry(&site_map, a))
+                  .collect::<Vec<_>>(),
+              collections => page
+                  .front_matter
+                  .collections
+                  .iter()
+                  .map(|collection| render_metadata_entry(&site_map, collection))
                   .collect::<Vec<_>>(),
               published => page.front_matter.published,
               link => page.front_matter.link,
